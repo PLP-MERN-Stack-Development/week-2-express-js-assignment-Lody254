@@ -1,63 +1,124 @@
-[![Open in Visual Studio Code](https://classroom.github.com/assets/open-in-vscode-2e0aaae1b6195c2367325f4f02e2d04e9abb55f0b24a779b69b11b9e10269abc.svg)](https://classroom.github.com/online_ide?assignment_repo_id=19663877&assignment_repo_type=AssignmentRepo)
-# Express.js RESTful API Assignment
+  server.js
+  require('dotenv').config();
+const express = require('express');
+const app = express();
 
-This assignment focuses on building a RESTful API using Express.js, implementing proper routing, middleware, and error handling.
+// Middleware
+const logger = require('./middleware/logger');
+const auth = require('./middleware/auth');
+const errorHandler = require('./middleware/errorHandler');
 
-## Assignment Overview
+// Routes
+const productRoutes = require('./routes/products');
 
-You will:
-1. Set up an Express.js server
-2. Create RESTful API routes for a product resource
-3. Implement custom middleware for logging, authentication, and validation
-4. Add comprehensive error handling
-5. Develop advanced features like filtering, pagination, and search
+// Middleware
+app.use(express.json());
+app.use(logger);
+app.use(auth);
 
-## Getting Started
+// API Routes
+app.use('/api/products', productRoutes);
 
-1. Accept the GitHub Classroom assignment invitation
-2. Clone your personal repository that was created by GitHub Classroom
-3. Install dependencies:
-   ```
-   npm install
-   ```
-4. Run the server:
-   ```
-   npm start
-   ```
+// Error Handling Middleware (after routes)
+app.use(errorHandler);
 
-## Files Included
+// Start Server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-- `Week2-Assignment.md`: Detailed assignment instructions
-- `server.js`: Starter Express.js server file
-- `.env.example`: Example environment variables file
+logger.js
+module.exports = (req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+};
+/auth.js
+module.exports = (req, res, next) => {
+  const token = req.headers['authorization'];
+  if (!token || token !== 'Bearer mysecrettoken') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+};
 
-## Requirements
+/errorHandler.js
+module.exports = (err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: err.message || 'Something went wrong' });
+};
 
-- Node.js (v18 or higher)
-- npm or yarn
-- Postman, Insomnia, or curl for API testing
+routes/products.js
+const express = require('express');
+const router = express.Router();
+let products = require('../data/products'); // Simulate DB with an array
 
-## API Endpoints
+// GET all products + optional filtering and search
+router.get('/', (req, res) => {
+  let results = products;
 
-The API will have the following endpoints:
+  // Filtering
+  if (req.query.category) {
+    results = results.filter(p => p.category === req.query.category);
+  }
 
-- `GET /api/products`: Get all products
-- `GET /api/products/:id`: Get a specific product
-- `POST /api/products`: Create a new product
-- `PUT /api/products/:id`: Update a product
-- `DELETE /api/products/:id`: Delete a product
+  // Search
+  if (req.query.search) {
+    const keyword = req.query.search.toLowerCase();
+    results = results.filter(p => p.name.toLowerCase().includes(keyword));
+  }
 
-## Submission
+  // Pagination
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const start = (page - 1) * limit;
+  const end = start + limit;
 
-Your work will be automatically submitted when you push to your GitHub Classroom repository. Make sure to:
+  res.json({
+    page,
+    total: results.length,
+    data: results.slice(start, end)
+  });
+});
 
-1. Complete all the required API endpoints
-2. Implement the middleware and error handling
-3. Document your API in the README.md
-4. Include examples of requests and responses
+// GET product by ID
+router.get('/:id', (req, res) => {
+  const product = products.find(p => p.id === req.params.id);
+  if (!product) return res.status(404).json({ error: 'Product not found' });
+  res.json(product);
+});
 
-## Resources
+// POST create product
+router.post('/', (req, res) => {
+  const { name, price, category } = req.body;
+  if (!name || !price) return res.status(400).json({ error: 'Name and price required' });
 
-- [Express.js Documentation](https://expressjs.com/)
-- [RESTful API Design Best Practices](https://restfulapi.net/)
-- [HTTP Status Codes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status) 
+  const newProduct = {
+    id: Date.now().toString(),
+    name,
+    price,
+    category: category || 'General'
+  };
+
+  products.push(newProduct);
+  res.status(201).json(newProduct);
+});
+
+// PUT update product
+router.put('/:id', (req, res) => {
+  const product = products.find(p => p.id === req.params.id);
+  if (!product) return res.status(404).json({ error: 'Product not found' });
+
+  const { name, price, category } = req.body;
+  if (name) product.name = name;
+  if (price) product.price = price;
+  if (category) product.category = category;
+
+  res.json(product);
+});
+
+// DELETE product
+router.delete('/:id', (req, res) => {
+  products = products.filter(p => p.id !== req.params.id);
+  res.status(204).send();
+});
+
+module.exports = router;
